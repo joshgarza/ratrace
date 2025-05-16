@@ -1,8 +1,9 @@
-import { useLoaderData, Await, type LoaderFunctionArgs } from "react-router"; // Correct imports your equivalent for loaders
-import RatRaceGame, { type RatData } from "~/components/RatRaceGame"; // Path to your component
+import RatRaceGame, { type RatData } from "~/components/RatRaceGame"; // Ensure this path is correct
 import { useEffect, useState } from "react";
+// Shadcn UI components you might want for this page (e.g., a loading spinner)
+// import { Skeleton } from "~/components/ui/skeleton"; // Example
 
-// Define the structure of a subscriber from your API
+// Define the structure of a subscriber from your API (remains the same)
 interface Subscriber {
   userId: string;
   userName: string;
@@ -17,40 +18,19 @@ interface ApiSubscribersResponse {
   subscribers: Subscriber[];
 }
 
-// Loader function to fetch subscribers from your Node.js API server
-// This runs on the server-side in a Remix-style setup, or you'd do client-side fetch.
-// For simplicity now, let's assume client-side fetching if loaders are complex to set up immediately.
-// If using Remix loaders:
-// export async function loader({ request }: LoaderFunctionArgs) {
-//   try {
-//     // IMPORTANT: This fetch happens from your Remix server to your API server.
-//     // Ensure your API server (localhost:3000) is running.
-//     // In production, this URL would be your API server's deployed address.
-//     const response = await fetch('http://localhost:3000/api/subscribers');
-//     if (!response.ok) {
-//       console.error("Failed to fetch subscribers:", response.status, await response.text());
-//       // Return empty or default data to prevent app crash
-//       return { subscribers: [], error: "Failed to load subscribers" };
-//     }
-//     const data: ApiSubscribersResponse = await response.json();
-//     const rats: RatData[] = data.subscribers.map(sub => ({
-//       id: sub.userId,
-//       name: sub.userName,
-//       // Add other properties if needed by RatRaceGame
-//     }));
-//     return { rats };
-//   } catch (error) {
-//     console.error("Error in loader:", error);
-//     return { subscribers: [], error: "Error fetching subscribers" };
-//   }
-// }
+// Fallback/Default Rats with some thematic names
+const getFallbackRats = (reason?: string): RatData[] => {
+    if (reason) console.log("Fallback Rats triggered:", reason);
+    return [
+        { id: "fb1", name: "PixelPacer", color: "#34D399" }, // Emerald green
+        { id: "fb2", name: "CodeCritter", color: "#F97316" }, // Orange
+        { id: "fb3", name: "SyntaxScurrier", color: "#8B5CF6" }, // Violet
+        { id: "fb4", name: "GlitchRunner", color: "#EC4899" }, // Fuchsia
+    ];
+};
 
-export default function Index() {
-  // If using Remix loaders:
-  // const { rats, error } = useLoaderData<typeof loader>();
-
-  // --- For Client-Side Fetching (simpler to start if not fully on Remix loaders yet) ---
-  const [rats, setRats] = useState<RatData[]>([]);
+export default function IndexPage() {
+  const [rats, setRats] = useState<RatData[]>(() => getFallbackRats("Initial component load."));
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -59,59 +39,77 @@ export default function Index() {
       setIsLoading(true);
       setError(null);
       try {
-        // This fetch happens from the client's browser to your API server.
-        // Ensure your API server (localhost:3000) is running and accessible.
-        // If Vite dev server and API server are on different ports, configure Vite proxy.
-        const response = await fetch('/api/subscribers'); // Assumes proxy or same origin
+        const response = await fetch('/api/subscribers'); // Ensure your Vite proxy is set up
         if (!response.ok) {
-          throw new Error(`Failed to fetch: ${response.status}`);
+          throw new Error(`Network response was not ok: ${response.status} - ${response.statusText}`);
         }
         const data: ApiSubscribersResponse = await response.json();
-        const mappedRats: RatData[] = data.subscribers.map(sub => ({
+        const mappedRats: RatData[] = data.subscribers.map((sub) => ({
           id: sub.userId,
           name: sub.userName,
         }));
-        setRats(mappedRats);
+        setRats(mappedRats.length > 0 ? mappedRats : getFallbackRats("No subscribers found after fetch."));
       } catch (err: any) {
-        setError(err.message || "Error fetching subscribers");
-        setRats([ // Fallback to hardcoded rats on error for development
-            { id: "1", name: "Ratty (Fallback)" },
-            { id: "2", name: "Cheeser (Fallback)" },
-            { id: "3", name: "Squeaky (Fallback)" },
-        ]);
+        console.error("Error fetching subscribers:", err);
+        setError(err.message || "An unknown error occurred while fetching subscribers.");
+        setRats(getFallbackRats(err.message || "Fetch error, using fallback."));
       } finally {
         setIsLoading(false);
       }
     }
     fetchSubscribers();
   }, []);
-  // --- End Client-Side Fetching ---
 
-
-  if (isLoading) {
-    return <div>Loading racers...</div>;
-  }
-
-  if (error) {
-    // Still render the game with fallback/empty rats if there's an error
-    // So the "Starting Soon" screen isn't blank.
-    console.error("Error loading subscribers for race:", error);
-  }
-
-  // Use a few hardcoded rats if the fetched list is empty and no error, or for initial dev
-  const displayRats = rats.length > 0 ? rats : [
-    { id: "hc1", name: "DeskRunner" },
-    { id: "hc2", name: "StreamSnacker" },
-    { id: "hc3", name: "PixelPacer" },
-  ];
-
+  // Determine which rats to display based on loading/error state
+  const displayRats = isLoading ? getFallbackRats("Still loading...") : (rats.length > 0 ? rats : getFallbackRats("Loading finished, but no rats."));
 
   return (
-    <div style={{ textAlign: 'center', fontFamily: 'Arial, sans-serif', backgroundColor: '#222', color: 'white', minHeight: '100vh', paddingTop: '20px' }}>
-      <h1>The DeskRat Race!</h1>
-      <p>Starting Soon...</p>
-      {error && <p style={{color: 'red'}}>Error loading subscriber list: {error}. Showing default racers.</p>}
-      <RatRaceGame racers={displayRats} />
+    // For fonts, ensure you've imported them in your globals.css, e.g., VT323 or Press Start 2P
+    // and set them in tailwind.config.js if you want to use font utilities like `font-pixel`.
+    <div className="min-h-screen bg-slate-900 text-slate-200 flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8 font-['VT323',_sans-serif]"> {/* Example retro font */}
+      <header className="text-center mb-8 md:mb-12">
+        <h1 className="text-5xl sm:text-6xl md:text-7xl font-bold text-purple-400 animate-pulse-slow">
+          {/* For a more pixelated look, you might use a pixel font class here */}
+          The Desk<span className="text-orange-400">Rat</span> Race!
+        </h1>
+        <p className="text-xl sm:text-2xl text-slate-400 mt-3 tracking-wider">
+          Stream Starting Soon... System Booting...
+        </p>
+      </header>
+
+      <main className="w-full max-w-5xl p-2">
+        {isLoading && (
+          <div className="text-center py-10 flex flex-col items-center">
+            <p className="text-2xl text-green-400 mb-4">Initializing Rat Racers...</p>
+            {/* Example of using shadcn Skeleton for placeholders */}
+            <div className="space-y-3 w-full max-w-md">
+              {/* <Skeleton className="h-12 w-full bg-slate-700" />
+              <Skeleton className="h-12 w-full bg-slate-700" />
+              <Skeleton className="h-12 w-3/4 bg-slate-700" /> */}
+              {/* Or a simple text loader */}
+              <div className="text-slate-500 text-lg">Loading Data [▓▓▓▓▓    ]</div>
+            </div>
+          </div>
+        )}
+
+        {error && !isLoading && (
+          <div className="text-center py-10 px-6 bg-red-800/30 rounded-lg border border-red-700 shadow-lg">
+            <p className="text-3xl text-red-400 font-bold">SYSTEM ERROR!</p>
+            <p className="text-slate-300 mt-3 text-lg">{error}</p>
+            <p className="text-slate-400 mt-2">Defaulting to simulation mode with test subjects...</p>
+          </div>
+        )}
+
+        {!isLoading && (
+          // The RatRaceGame component will be styled internally
+          <RatRaceGame racers={displayRats} />
+        )}
+      </main>
+
+      <footer className="mt-10 md:mt-16 text-center text-sm text-slate-500">
+        <p>© {new Date().getFullYear()} thedeskrat Industries</p>
+        <p>// Ready to RUMBLE_ //</p>
+      </footer>
     </div>
   );
 }
