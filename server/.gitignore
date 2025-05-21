@@ -1,4 +1,4 @@
 node_modules/
 dist/
 .env
-tokens.json  # IMPORTANT: Do not commit your tokens!
+tokens.json
