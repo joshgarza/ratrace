@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2020", // Or a newer target like ES2022, ESNext
+    "module": "commonjs", // Standard for Node.js with require/module.exports
+    "rootDir": "./src", // Assuming your .ts files will be in a 'src' directory
+    "outDir": "./dist", // Compiled JavaScript will go here
+    "esModuleInterop": true, // Allows default imports from commonjs modules
+    "forceConsistentCasingInFileNames": true,
+    "strict": true, // Enables all strict type-checking options
+    "skipLibCheck": true, // Skip type checking of all declaration files (*.d.ts)
+    "resolveJsonModule": true, // Allows importing JSON files
+    "sourceMap": true // Generate source maps for debugging
+  },
+  "include": ["src/**/*"], // Which files to include for compilation
+  "exclude": ["node_modules", "**/*.spec.ts"] // Which files to exclude
+}
