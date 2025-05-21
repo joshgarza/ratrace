@@ -53,8 +53,8 @@ Welcome to the DeskRat Race! This is a fun, interactive game designed to be used
 1.  **Clone the Repository:**
 
     ```bash
-    git clone <your-repo-url>
-    cd deskrat-race
+    git clone https://github.com/joshgarza/ratrace
+    cd ratrace
     ```
 
 2.  **Backend Setup (`server/`):**
@@ -256,20 +256,4 @@ Details on contributing will be added later. For now, feel free to fork and expe
 
 ## 📄 License
 
-(Consider adding a license, e.g., MIT)
-This project is licensed under the MIT License - see the LICENSE.md file for details (if you create one).
-
-```
-
-**Key things this README includes:**
-
-*   Clear project purpose.
-*   List of current and planned features.
-*   Detailed setup instructions for both backend and frontend.
-*   Explicit instructions on Twitch App setup and environment variables (with an example `.env` structure).
-*   Guidance on the initial OAuth flow.
-*   An overview of the refactored backend project structure and key components.
-*   A section for future work.
-
-Remember to replace placeholders like `<your-repo-url>` and fill in any missing details specific to your final setup. You should also create a `.env.example` file in your `server/` directory based on the environment variable list.
-```
+This project is licensed under the MIT License - see the LICENSE.md file for details.
