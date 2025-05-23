@@ -5,7 +5,7 @@ import { SERVER_BASE_URL } from '../config'; // For authUrl hint
 import { connectToTwitchEventSub, getTwitchEventSubClient } from '../services/TwitchEventSub';
 import { getIO } from '../services/SocketManager'; // To pass to EventSub
 import WebSocket from 'ws';
-import { Bet } from '../types/app';
+import { RaceParticipant } from '../types/app';
 
 // These will be initialized in index.ts and passed or accessed
 // This is a bit tricky with module scope; consider passing authManager via middleware or app.locals
@@ -14,8 +14,8 @@ import { Bet } from '../types/app';
 
 export const createAuthRoutes = (
   authManager: TwitchAuthManager,
-  sharedBettingState: { isOpen: boolean }, // Pass shared state
-  sharedCurrentBets: { current: Bet[] } // Pass shared state
+  raceState: { isOpen: boolean }, // Pass shared race state
+  participants: { current: RaceParticipant[] } // Pass shared participants
 ) => {
   const router = Router();
 
@@ -51,10 +51,10 @@ export const createAuthRoutes = (
         eventSubClient.readyState !== WebSocket.CONNECTING
       ) {
         console.log('AuthRoutes: Attempting to reconnect EventSub after successful OAuth.');
-        connectToTwitchEventSub(authManager, getIO(), sharedBettingState, sharedCurrentBets);
+        connectToTwitchEventSub(authManager, getIO(), raceState, participants);
       } else if (!eventSubClient) {
         console.log('AuthRoutes: Attempting initial EventSub connection after successful OAuth.');
-        connectToTwitchEventSub(authManager, getIO(), sharedBettingState, sharedCurrentBets);
+        connectToTwitchEventSub(authManager, getIO(), raceState, participants);
       }
       res.send('Authentication successful! You can close this window.');
       return;

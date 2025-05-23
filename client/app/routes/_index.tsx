@@ -1,21 +1,23 @@
 import RatRaceGame, { type RatData } from "~/components/RatRaceGame"; // Ensure this path is correct
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
+import { io, Socket } from "socket.io-client";
+import AdminControls from "~/components/AdminControls"; // Import the AdminControls component
 // Shadcn UI components you might want for this page (e.g., a loading spinner)
 // import { Skeleton } from "~/components/ui/skeleton"; // Example
 
-// Define the structure of a subscriber from your API (remains the same)
-interface Subscriber {
+// Define the structure of a participant from your API
+interface RaceParticipant {
   userId: string;
   userName: string;
   userLogin: string;
-  tier: string;
-  isGift: boolean;
+  registeredAt: string;
+  color: string;
 }
 
-interface ApiSubscribersResponse {
-  total: number;
-  points: number;
-  subscribers: Subscriber[];
+interface ApiParticipantsResponse {
+  isRegistrationOpen: boolean;
+  participants: RaceParticipant[];
 }
 
 // Fallback/Default Rats with some thematic names
@@ -33,32 +35,125 @@ export default function IndexPage() {
   const [rats, setRats] = useState<RatData[]>(() => getFallbackRats("Initial component load."));
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRegistrationOpen, setIsRegistrationOpen] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const socketRef = useRef<Socket | null>(null);
+
+  // Connect to socket.io
+  useEffect(() => {
+    // Initialize socket connection
+    socketRef.current = io("http://localhost:3000");
+
+    // Handle socket events
+    socketRef.current.on("connect", () => {
+      console.log("Socket.IO connected!");
+    });
+
+    socketRef.current.on("registration_status", (data: { isOpen: boolean, message: string }) => {
+      console.log("Registration status update:", data);
+      setIsRegistrationOpen(data.isOpen);
+      setStatusMessage(data.message);
+    });
+
+    socketRef.current.on("new_participant", (data: { userName: string }) => {
+      console.log("New participant joined:", data.userName);
+      // Fetch latest participants
+      fetchParticipants();
+    });
+
+    socketRef.current.on("race_winner_determined", (data: { winningRatName: string, participants: string[] }) => {
+      console.log("Race winner:", data.winningRatName);
+      // Handle race winner announcement if needed
+    });
+
+    // Cleanup on unmount
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
+    };
+  }, []);
+
+  // Function to fetch participants
+  const fetchParticipants = async () => {
+    try {
+      // Fetch participants from the API
+      const response = await fetch("http://localhost:3000/api/participants", {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch participants: ${response.status}`);
+      }
+
+      const data: ApiParticipantsResponse = await response.json();
+      console.log("Participants data received:", data);
+
+      // Set registration status
+      setIsRegistrationOpen(data.isRegistrationOpen);
+
+      // Map participants to rat data
+      const mappedRats: RatData[] = data.participants.map((participant) => ({
+        id: participant.userId,
+        name: participant.userName,
+        color: participant.color
+      }));
+
+      setRats(mappedRats.length > 0 ? mappedRats : getFallbackRats("No participants found after fetch."));
+    } catch (err: any) {
+      console.error("Error fetching participants:", err);
+      setError(err.message || "An unknown error occurred.");
+    }
+  };
 
   useEffect(() => {
-    async function fetchSubscribers() {
+    // Check URL parameters
+    const authSuccess = searchParams.get("auth") === "success";
+    const authError = searchParams.get("error") === "auth_failed";
+
+    if (authSuccess) {
+      console.log("Authentication successful!");
+    }
+
+    if (authError) {
+      setError("Authentication failed. Please try again.");
+    }
+
+    async function checkAuthAndFetchParticipants() {
       setIsLoading(true);
       setError(null);
       try {
-        const response = await fetch('/api/subscribers'); // Ensure your Vite proxy is set up
-        if (!response.ok) {
-          throw new Error(`Network response was not ok: ${response.status} - ${response.statusText}`);
+        // First check if we're authenticated
+        console.log("Checking authentication status...");
+        const authCheck = await fetch("http://localhost:3000/api/protected", {
+          credentials: "include",
+        });
+
+        if (!authCheck.ok) {
+          if (authCheck.status === 401) {
+            console.log("Not authenticated, redirecting to reauth endpoint");
+            // Direct browser navigation to server reauth endpoint
+            window.location.href = "http://localhost:3000/auth/reauth";
+            return;
+          }
+          throw new Error(`Auth check failed: ${authCheck.status}`);
         }
-        const data: ApiSubscribersResponse = await response.json();
-        const mappedRats: RatData[] = data.subscribers.map((sub) => ({
-          id: sub.userId,
-          name: sub.userName,
-        }));
-        setRats(mappedRats.length > 0 ? mappedRats : getFallbackRats("No subscribers found after fetch."));
+
+        console.log("Authentication successful, fetching participants");
+        // Now fetch participants instead of subscribers
+        await fetchParticipants();
       } catch (err: any) {
-        console.error("Error fetching subscribers:", err);
-        setError(err.message || "An unknown error occurred while fetching subscribers.");
+        console.error("Error:", err);
+        setError(err.message || "An unknown error occurred.");
         setRats(getFallbackRats(err.message || "Fetch error, using fallback."));
       } finally {
         setIsLoading(false);
       }
     }
-    fetchSubscribers();
-  }, []);
+
+    checkAuthAndFetchParticipants();
+  }, [searchParams]);
 
   // Determine which rats to display based on loading/error state
   const displayRats = isLoading ? getFallbackRats("Still loading...") : (rats.length > 0 ? rats : getFallbackRats("Loading finished, but no rats."));
@@ -73,7 +168,7 @@ export default function IndexPage() {
           The Desk<span className="text-orange-400">Rat</span> Race!
         </h1>
         <p className="text-xl sm:text-2xl text-slate-400 mt-3 tracking-wider">
-          Stream Starting Soon... System Booting...
+          {statusMessage || (isRegistrationOpen ? "Registration OPEN! Type !register in chat" : "Registration closed")}
         </p>
       </header>
 
@@ -101,8 +196,15 @@ export default function IndexPage() {
         )}
 
         {!isLoading && (
-          // The RatRaceGame component will be styled internally
-          <RatRaceGame racers={displayRats} />
+          <>
+            {/* The RatRaceGame component will be styled internally */}
+            <RatRaceGame racers={displayRats} />
+
+            {/* Add the admin controls panel */}
+            <div className="mt-8">
+              <AdminControls isRegistrationOpen={isRegistrationOpen} />
+            </div>
+          </>
         )}
       </main>
 

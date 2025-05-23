@@ -2,25 +2,28 @@
 import WebSocket from 'ws';
 import axios, { AxiosError } from 'axios';
 import { TwitchAuthManager } from './TwitchAuthManager'; // Assuming TwitchAuthManager is in the same folder or adjust path
-import { TWITCH_CLIENT_ID, YOUR_BROADCASTER_ID, CHANNEL_POINT_REWARD_ID_FOR_BETS } from '../config'; // Use centralized config
+import { TWITCH_CLIENT_ID, YOUR_BROADCASTER_ID } from '../config'; // Use centralized config
 import {
   TwitchEventSubMessage,
   TwitchEventSubWelcomePayload,
-  TwitchChannelPointsRedemptionPayload,
-  TwitchChannelPointsRedemptionEvent,
+  TwitchChatMessagePayload,
+  TwitchChatMessageEvent,
   EventSubSubscriptionCondition,
 } from '../types/twitch';
-import { Bet } from '../types/app';
+import { RaceParticipant } from '../types/app';
 import { Server as SocketIOServer } from 'socket.io';
+import { emitNewParticipant } from './SocketManager';
 
 let twitchEventSubClient: WebSocket | null = null;
 let twitchEventSubSessionId: string | null = null;
 
-// This needs to be passed in or set globally
-// For now, let's assume it's passed to the init function
+// References to shared state objects
 let ioInstance: SocketIOServer | null = null;
-let bettingOpenState: { isOpen: boolean } = { isOpen: false }; // To access bettingOpen
-let currentBetsRef: { current: Bet[] } = { current: [] }; // To access currentBets
+let raceStateRef: { isOpen: boolean } = { isOpen: false };
+let participantsRef: { current: RaceParticipant[] } = { current: [] };
+
+// Command constants
+const REGISTER_COMMAND = '!register';
 
 async function createEventSubSubscription(
   authManager: TwitchAuthManager,
@@ -41,6 +44,20 @@ async function createEventSubSubscription(
 
   console.log(`TwitchEventSub: Attempting to create subscription for type: ${type}`);
   try {
+    // First log token validation info for debugging
+    try {
+      const validationResponse = await axios.get('https://id.twitch.tv/oauth2/validate', {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+      console.log(`TwitchEventSub: Token scopes: ${validationResponse.data.scopes?.join(', ')}`);
+      console.log(`TwitchEventSub: Token user_id: ${validationResponse.data.user_id}`);
+    } catch (validationError) {
+      console.error('TwitchEventSub: Failed to validate token:', validationError);
+    }
+
+    // Now create the subscription
     await axios.post(
       'https://api.twitch.tv/helix/eventsub/subscriptions',
       { type, version, condition, transport: { method: 'websocket', session_id: sessionId } },
@@ -55,7 +72,6 @@ async function createEventSubSubscription(
     console.log(`TwitchEventSub: Subscription created for ${type}.`);
   } catch (error) {
     console.error(`TwitchEventSub: Error creating subscription for ${type}:`);
-    // ... (enhanced error logging from your original file)
     if (axios.isAxiosError(error)) {
       const axiosError = error as AxiosError;
       console.error('Status:', axiosError.response?.status);
@@ -69,12 +85,12 @@ async function createEventSubSubscription(
 export function connectToTwitchEventSub(
   authManager: TwitchAuthManager,
   io: SocketIOServer, // Pass Socket.IO server instance
-  bettingState: { isOpen: boolean }, // Pass bettingOpen state object
-  betsArray: { current: Bet[] } // Pass currentBets array object
+  raceState: { isOpen: boolean }, // Pass race state object
+  participants: { current: RaceParticipant[] } // Pass participants array object
 ): void {
   ioInstance = io; // Store for use in onmessage
-  bettingOpenState = bettingState;
-  currentBetsRef = betsArray;
+  raceStateRef = raceState;
+  participantsRef = participants;
 
   if (
     twitchEventSubClient &&
@@ -100,50 +116,45 @@ export function connectToTwitchEventSub(
         const welcomePayload = message.payload as TwitchEventSubWelcomePayload;
         twitchEventSubSessionId = welcomePayload.session.id;
         console.log(`TwitchEventSub: session_welcome. Session ID: ${twitchEventSubSessionId}`);
-        // Subscribe to Channel Points Redemption
-        if (CHANNEL_POINT_REWARD_ID_FOR_BETS && YOUR_BROADCASTER_ID && twitchEventSubSessionId) {
+
+        // Subscribe to chat messages
+        if (YOUR_BROADCASTER_ID && twitchEventSubSessionId) {
+          // For chat.message, both broadcaster_user_id and user_id are required
+          // Ideally, we want to listen to all chat messages in the channel
+          // For now we'll just listen to the broadcaster's messages
           createEventSubSubscription(
             authManager,
             twitchEventSubSessionId,
-            'channel.channel_points_custom_reward_redemption.add',
+            'channel.chat.message',
             '1',
-            { broadcaster_user_id: YOUR_BROADCASTER_ID, reward_id: CHANNEL_POINT_REWARD_ID_FOR_BETS }
+            {
+              broadcaster_user_id: YOUR_BROADCASTER_ID,
+              user_id: YOUR_BROADCASTER_ID // For now, just listen to the broadcaster's messages
+            }
           );
+
+          console.log('TwitchEventSub: Attempted to subscribe to chat messages for broadcaster:', YOUR_BROADCASTER_ID);
         } else {
-          console.warn('TwitchEventSub: Not subscribing to betting reward. Missing reward_id or broadcaster_id.');
+          console.warn('TwitchEventSub: Not subscribing to chat messages. Missing broadcaster_id.');
         }
         break;
+
       case 'notification':
-        if (message.metadata.subscription_type === 'channel.channel_points_custom_reward_redemption.add') {
-          const payload = message.payload as TwitchChannelPointsRedemptionPayload;
+        // Handle chat message for registration
+        if (message.metadata.subscription_type === 'channel.chat.message') {
+          const payload = message.payload as TwitchChatMessagePayload;
           const eventData = payload.event;
-          console.log(
-            `TwitchEventSub: Channel points redeemed by ${eventData.user_name}. Input: "${eventData.user_input}"`
-          );
-          if (CHANNEL_POINT_REWARD_ID_FOR_BETS && eventData.reward.id === CHANNEL_POINT_REWARD_ID_FOR_BETS) {
-            if (bettingOpenState.isOpen) {
-              const bet: Bet = {
-                userId: eventData.user_id,
-                userName: eventData.user_name,
-                userLogin: eventData.user_login,
-                rewardId: eventData.reward.id,
-                userInput: eventData.user_input,
-                timestamp: message.metadata.message_timestamp,
-              };
-              currentBetsRef.current.push(bet);
-              console.log('TwitchEventSub: Bet recorded. Total bets:', currentBetsRef.current.length);
-              if (ioInstance) {
-                ioInstance.emit('new_bet_placed', { userName: eventData.user_name, betInput: eventData.user_input });
-              }
-            } else {
-              console.log(`TwitchEventSub: Bet from ${eventData.user_name} but betting is closed.`);
-            }
+
+          // Check if this is a registration command
+          if (eventData.message.text.trim().toLowerCase().startsWith(REGISTER_COMMAND.toLowerCase())) {
+            handleRegistrationCommand(eventData);
           }
         }
         break;
-      // ... (handle other message types: keepalive, reconnect, revocation)
+
       case 'session_keepalive':
-        break; // Usually no action needed
+        break; // No action needed
+
       case 'session_reconnect':
         const reconnectPayload = message.payload as TwitchEventSubWelcomePayload;
         console.log('TwitchEventSub: Received session_reconnect. New URL:', reconnectPayload.session.reconnect_url);
@@ -151,9 +162,11 @@ export function connectToTwitchEventSub(
         // Robust reconnect logic would connect to reconnectPayload.session.reconnect_url
         // For simplicity, the onclose handler's generic reconnect will fire.
         break;
+
       case 'revocation':
         console.log('TwitchEventSub: Subscription revoked:', JSON.stringify(message.payload, null, 2));
         break;
+
       default:
         console.log('TwitchEventSub: Received unhandled message type:', message.metadata.message_type);
     }
@@ -169,9 +182,61 @@ export function connectToTwitchEventSub(
     twitchEventSubClient = null;
     if (event.code !== 1000) {
       console.log('TwitchEventSub: Attempting to reconnect in 5 seconds...');
-      setTimeout(() => connectToTwitchEventSub(authManager, ioInstance!, bettingOpenState, currentBetsRef), 5000);
+      setTimeout(() => connectToTwitchEventSub(authManager, ioInstance!, raceStateRef, participantsRef), 5000);
     }
   };
+}
+
+/**
+ * Handles registration command from chat
+ */
+export function handleRegistrationCommand(chatEvent: TwitchChatMessageEvent): void {
+  if (!raceStateRef.isOpen) {
+    console.log(`TwitchEventSub: Registration attempt from ${chatEvent.chatter_user_name} but registration is closed.`);
+    return;
+  }
+
+  // Check if user is already registered
+  const alreadyRegistered = participantsRef.current.some(
+    participant => participant.userId === chatEvent.chatter_user_id
+  );
+
+  if (alreadyRegistered) {
+    console.log(`TwitchEventSub: ${chatEvent.chatter_user_name} already registered for the race.`);
+    return;
+  }
+
+  // Register the user
+  const participant: RaceParticipant = {
+    userId: chatEvent.chatter_user_id,
+    userName: chatEvent.chatter_user_name,
+    userLogin: chatEvent.chatter_user_login,
+    registeredAt: new Date().toISOString(),
+    color: chatEvent.color || generateRandomColor(chatEvent.chatter_user_name) // Use chat color or generate one
+  };
+
+  participantsRef.current.push(participant);
+  console.log(`TwitchEventSub: ${chatEvent.chatter_user_name} registered for the race. Total participants: ${participantsRef.current.length}`);
+
+  // Notify clients via Socket.IO
+  if (ioInstance) {
+    emitNewParticipant(chatEvent.chatter_user_name);
+  }
+}
+
+/**
+ * Generates a random color based on username
+ */
+function generateRandomColor(username: string): string {
+  // Simple hash function for consistent color per username
+  let hash = 0;
+  for (let i = 0; i < username.length; i++) {
+    hash = username.charCodeAt(i) + ((hash << 5) - hash);
+  }
+
+  // Convert to hex color
+  const c = (hash & 0x00FFFFFF).toString(16).toUpperCase();
+  return "#" + "00000".substring(0, 6 - c.length) + c;
 }
 
 export function getTwitchEventSubClient(): WebSocket | null {

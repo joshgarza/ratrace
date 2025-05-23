@@ -1,10 +1,8 @@
 // src/types/app.ts
-export interface Bet {
+export interface RaceParticipant {
   userId: string;
   userName: string;
   userLogin: string;
-  rewardId: string;
-  userInput: string;
-  timestamp: string;
-  ratBetOn?: string;
+  registeredAt: string;
+  color?: string; // Optional color for the rat
 }

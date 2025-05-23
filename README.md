@@ -145,7 +145,7 @@ Welcome to the DeskRat Race! This is a fun, interactive game designed to be used
       - You should be redirected back, and the server will obtain and store the tokens in `server/tokens.json`.
 
     - **Get User Access Token and Refresh Token**
-    - `twitch token -u -s "channel:read:subscriptions"`
+    - `twitch token -u -s "channel:read:subscriptions channel:manage:redemptions user:read:email"`
     - Save the relevant information in `tokens.json`
 
 2.  **Start the Frontend Development Server:**
