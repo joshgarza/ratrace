@@ -51,6 +51,26 @@ const AdminControls: React.FC<AdminControlsProps> = ({ isRegistrationOpen }) => 
     }
   };
 
+  const handleResetRats = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('http://localhost:3000/api/participants/reset', {
+        method: 'POST',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to reset participants');
+      }
+
+      console.log('Participants reset successfully');
+    } catch (error) {
+      console.error('Error resetting participants:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleTestRegistration = async () => {
     if (!testUsername.trim()) return;
 
@@ -129,6 +149,16 @@ const AdminControls: React.FC<AdminControlsProps> = ({ isRegistrationOpen }) => 
             className="bg-red-600 hover:bg-red-700 flex-1"
           >
             Close Registration
+          </Button>
+        </div>
+
+        <div className="pt-2 border-t border-slate-700">
+          <Button
+            onClick={handleResetRats}
+            disabled={loading}
+            className="w-full bg-yellow-600 hover:bg-yellow-700"
+          >
+            Reset Rats
           </Button>
         </div>
 

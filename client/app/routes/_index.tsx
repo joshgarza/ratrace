@@ -62,6 +62,16 @@ export default function IndexPage() {
       fetchParticipants();
     });
 
+    socketRef.current.on("participants_reset", (data: { message: string }) => {
+      console.log("Participants reset:", data.message);
+      // Clear rats list
+      setRats([]);
+      setStatusMessage("All rats have been reset");
+
+      // Re-fetch participants to ensure we have the latest state
+      fetchParticipants();
+    });
+
     socketRef.current.on("race_winner_determined", (data: { winningRatName: string, participants: string[] }) => {
       console.log("Race winner:", data.winningRatName);
       // Handle race winner announcement if needed
@@ -100,7 +110,8 @@ export default function IndexPage() {
         color: participant.color
       }));
 
-      setRats(mappedRats.length > 0 ? mappedRats : getFallbackRats("No participants found after fetch."));
+      // Set rats to empty array if no participants found
+      setRats(mappedRats.length > 0 ? mappedRats : []);
     } catch (err: any) {
       console.error("Error fetching participants:", err);
       setError(err.message || "An unknown error occurred.");
@@ -146,7 +157,7 @@ export default function IndexPage() {
       } catch (err: any) {
         console.error("Error:", err);
         setError(err.message || "An unknown error occurred.");
-        setRats(getFallbackRats(err.message || "Fetch error, using fallback."));
+        setRats([]); // Set empty array instead of fallback rats
       } finally {
         setIsLoading(false);
       }
@@ -156,7 +167,7 @@ export default function IndexPage() {
   }, [searchParams]);
 
   // Determine which rats to display based on loading/error state
-  const displayRats = isLoading ? getFallbackRats("Still loading...") : (rats.length > 0 ? rats : getFallbackRats("Loading finished, but no rats."));
+  const displayRats = isLoading ? [] : rats;
 
   return (
     // For fonts, ensure you've imported them in your globals.css, e.g., VT323 or Press Start 2P
@@ -197,8 +208,15 @@ export default function IndexPage() {
 
         {!isLoading && (
           <>
-            {/* The RatRaceGame component will be styled internally */}
-            <RatRaceGame racers={displayRats} />
+            {displayRats.length === 0 && !error ? (
+              <div className="text-center py-10 px-6 bg-slate-800/50 rounded-lg border border-slate-700 shadow-lg">
+                <p className="text-2xl text-slate-300 font-bold">No Rats Registered</p>
+                <p className="text-slate-400 mt-2">Open registration and have participants register to join the race!</p>
+              </div>
+            ) : (
+              /* The RatRaceGame component will be styled internally */
+              <RatRaceGame racers={displayRats} />
+            )}
 
             {/* Add the admin controls panel */}
             <div className="mt-8">

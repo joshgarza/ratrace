@@ -32,7 +32,12 @@ TWITCH_SCOPES=channel:read:subscriptions channel:read:redemptions user:read:emai
    - Follow the authentication flow
    - Check that the token has the proper scopes via `/api/test/validate-token`
    - Open race registration
-   - Type `!register` in your Twitch chat to register
+   - Type `!register` in your Twitch chat to register OR:
+```
+curl -X POST http://localhost:3000/api/test/chat-message \
+  -H "Content-Type: application/json" \
+  -d '{"username": "test_user", "message": "!register"}'
+```
 
 ### Troubleshooting
 

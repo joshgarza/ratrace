@@ -58,6 +58,29 @@ async function startServer() {
     res.send('DeskRat Race Server (TypeScript Refactored) is running!');
   });
 
+  // Add a new endpoint to reset participants
+  app.post('/api/participants/reset', (async (req: Request, res: Response) => {
+    try {
+      // Check authentication
+      const accessToken = await authManager.getValidAccessToken();
+      if (!accessToken) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      // Reset participants list
+      participants.current = [];
+
+      // Notify all clients that participants have been reset
+      io.emit('participants_reset', { message: 'All participants have been reset' });
+
+      console.log('Participants reset successfully');
+      res.json({ success: true, message: 'All participants have been reset' });
+    } catch (error) {
+      console.error('Error resetting participants:', error);
+      res.status(500).json({ error: 'Failed to reset participants' });
+    }
+  }) as RequestHandler);
+
   // Global error handler (example)
   app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
     console.error('Global Error Handler:', err.stack);
